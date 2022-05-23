@@ -1,8 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
-#include <limits.h>
 #include "double.h"
-#include "mult.h"
 
 DOUBLE mult(DOUBLE x, DOUBLE y)
 {
@@ -19,14 +17,4 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
     ans.bits |= sign << 63 | expn << 52 | mtsa;
     return ans;
 }
-
-void test(DOUBLE x, DOUBLE y)
-{
-    printf("x = %lf, y = %lf\n", x.represent, y.represent);
-    show_bits(x);
-    show_bits(y);
-    show_bits((DOUBLE) {.represent = x.represent * y.represent});
-    show_bits(mult(x, y));
-}
-
 

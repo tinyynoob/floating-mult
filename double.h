@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdint.h>
 
 #ifndef DOUBLE_H
@@ -9,7 +10,7 @@ union ieee_double_precision {
     double represent;
 };
 
-static void show_bits(DOUBLE x)
+static inline void show_bits(DOUBLE x)
 {
     for (int i = 63; i >= 0; i--) {
         printf("%u", (unsigned) (x.bits >> i & 1));
