@@ -27,7 +27,7 @@ static inline uint64_t get_sign(DOUBLE x)
 
 static inline uint64_t get_expn(DOUBLE x)
 {
-    return (x.bits >> 52) & (uint64_t) 0x7FF;
+    return (x.bits >> 52) & (uint64_t) 0x7FFu;
 }
 
 static inline uint64_t get_mtsa(DOUBLE x)
