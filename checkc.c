@@ -23,8 +23,11 @@ int main()
             printf("x = %lf, y = %lf\n", x.represent, y.represent);
             show_bits(x);
             show_bits(y);
+            printf("%lf\n", ref.represent);
             show_bits(ref);
+            printf("%lf\n", my.represent);
             show_bits(my);
+            putchar('\n');
             fail++;
         }
     }

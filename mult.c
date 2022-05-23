@@ -16,23 +16,30 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
     uint64_t sign = 0, expn = 0, mtsa = 0;
     sign = get_sign(x) ^ get_sign(y);
     if (!x.bits && get_expn(y) == 0x7FFu && !get_mtsa(y)) {
-        mtsa = 1;
         expn = 0x7FFu;
+        mtsa = 1;
         goto ret;
     } else if (!y.bits && get_expn(x) == 0x7FFu && !get_mtsa(x)) {
-        mtsa = 1;
         expn = 0x7FFu;
+        mtsa = 1;
         goto ret;
     } else if (!x.bits || !y.bits) {
-        return (DOUBLE) {.bits = 0};
+        expn = 0;
+        mtsa = 0;
+        goto ret;
     }
 
     expn = (get_expn(x) + get_expn(y) - 1023);
     __uint128_t mprod = ((__uint128_t) 1 << 52 | get_mtsa(x)) * ((__uint128_t) 1 << 52 | get_mtsa(y));
     int carry = mprod >> (52 + 52 + 1); // \in \{0, 1\}
     expn += carry;
-    if (expn >= (uint64_t) 1 << 11) {
+    // show_bits((DOUBLE) {.bits = expn});
+    if ((int64_t) expn >= 0x7FFu) { // magnitude too big
         expn = 0x7FFu;
+        mtsa = 0;
+        goto ret;
+    } else if ((int64_t) expn <= 0) {   // magnitude too small
+        expn = 0;
         mtsa = 0;
         goto ret;
     }
@@ -41,8 +48,6 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
     mtsa = (mtsa >> 1) + (mtsa & 1);    //rounding to nearest
     mtsa &= ((uint64_t) 1 << 52) - 1;
 ret:;
-    DOUBLE ans = {.bits = 0};
-    ans.bits = sign << 63 | expn << 52 | mtsa;
-    return ans;
+    return (DOUBLE) {.bits = sign << 63 | expn << 52 | mtsa};
 }
 
