@@ -5,7 +5,7 @@
 #include "double.h"
 #include "mult.h"
 
-#define TESTNUM 100
+#define TESTNUM 1000
 
 int main()
 {
@@ -14,13 +14,13 @@ int main()
     for (int i = 0; i < TESTNUM; i++) {
         DOUBLE x = {.bits = (uint64_t) rand() << 48 | (uint64_t) rand() << 32 | (uint64_t) rand() << 16 | (uint64_t) rand()};
         DOUBLE y = {.bits = (uint64_t) rand() << 48 | (uint64_t) rand() << 32 | (uint64_t) rand() << 16 | (uint64_t) rand()};
-        printf("x = %lf, y = %lf\n", x.represent, y.represent);
         DOUBLE ref = (DOUBLE) {.represent = x.represent * y.represent};
         DOUBLE my = mult(x, y);
         if (ref.bits == my.bits) {
-            puts("passed");
+            // puts("passed");
             pass++;
         } else {
+            printf("x = %lf, y = %lf\n", x.represent, y.represent);
             show_bits(x);
             show_bits(y);
             show_bits(ref);

@@ -8,7 +8,7 @@ checkc: mult_checkc
 	./$<
 
 mult_checkc: checkc.c mult.c double.h
-	$(cc) -o $@ chekc.c mult.c $(cflags)
+	$(cc) -o $@ checkc.c mult.c $(cflags)
 
 clean:
 	-rm mult_checkc
