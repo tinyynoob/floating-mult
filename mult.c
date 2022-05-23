@@ -2,8 +2,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include "double.h"
-
-#define DEBUG 1
+#include "mult.h"
 
 DOUBLE mult(DOUBLE x, DOUBLE y)
 {
@@ -21,34 +20,13 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
     return ans;
 }
 
-#if DEBUG
-static void test(DOUBLE x, DOUBLE y)
+void test(DOUBLE x, DOUBLE y)
 {
     printf("x = %lf, y = %lf\n", x.represent, y.represent);
     show_bits(x);
     show_bits(y);
     show_bits((DOUBLE) {.represent = x.represent * y.represent});
     show_bits(mult(x, y));
-}
-#endif
-
-int main()
-{
-    DOUBLE x, y;
-    // show_bits((DOUBLE) {.bits = 65537});
-    // show_bits((DOUBLE) {.bits = UINT64_MAX});
-
-    x.represent = 312345;
-    y.represent = 7.1;
-    test(x, y);
-    x.represent = -312345;
-    y.represent = 7.1;
-    test(x, y);
-    x.represent = -312345;
-    y.represent = -7.1;
-    test(x, y);
-
-    return 0;
 }
 
 

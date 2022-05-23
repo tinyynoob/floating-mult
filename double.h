@@ -1,5 +1,8 @@
 #include <stdint.h>
 
+#ifndef DOUBLE_H
+#define DOUBLE_H
+
 typedef union ieee_double_precision DOUBLE;
 union ieee_double_precision {
     uint64_t bits;
@@ -30,3 +33,5 @@ static inline uint64_t get_mtsa(DOUBLE x)
 {
     return x.bits & (((uint64_t) 1 << 52) - 1);
 }
+
+#endif
