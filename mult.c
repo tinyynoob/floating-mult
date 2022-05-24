@@ -30,28 +30,54 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
         goto ret;
     }
 
-    expn = (get_expn(x) + get_expn(y) - 1023);
-    __uint128_t mprod = ((__uint128_t) 1 << 52 | get_mtsa(x)) * ((__uint128_t) 1 << 52 | get_mtsa(y));
-    int carry = mprod >> (52 + 52 + 1); // \in {0, 1}
-    expn += carry;
-    // show_bits((DOUBLE) {.bits = expn});
-    if ((int64_t) expn >= 0x7FFu) { // magnitude too big, rounding up to \infty
-        expn = 0x7FFu;
-        mtsa = 0;
-        goto ret;
-    }
-    mtsa = (mprod >> (52 - 1 + carry));
-    mtsa = (mtsa >> 1) + (mtsa & 1);    //rounding to nearest
-
-
-    mtsa &= ((uint64_t) 1 << 52) - 1;
-
-    expn &= (uint64_t) 0x7FFu;
-    if ((int64_t) expn <= 0) {   // magnitude too small
+    /* if subnormal involved */
+    if (!get_expn(x) && !get_expn(y)) { // subnormal * subnormal = 0
         expn = 0;
         mtsa = 0;
         goto ret;
+    } else if (!get_expn(y)) {  // try to fix the subnormal number at x
+        uint64_t temp = x.bits;
+        x.bits = y.bits;
+        y.bits = temp;
     }
+    if (!get_expn(x)) { // x is subnormal and y is normal
+        // TODO
+
+    }
+
+    /* if both normal */
+    __uint128_t mprod = ((__uint128_t) 1 << 52 | get_mtsa(x)) * ((__uint128_t) 1 << 52 | get_mtsa(y));
+    int carry = mprod >> (52 + 52 + 1); // \in {0, 1}
+    mprod >>= carry;
+    expn = get_expn(x) + get_expn(y) - 1023 + carry;
+    if ((int64_t) expn >= 0x07FF) { // magnitude too big, rounding up to \infty
+        expn = 0x7FFu;
+        mtsa = 0;
+        goto ret;
+    } else if ((int64_t) expn > 0) {    // results in normal
+        mprod >>= (52 - 1);
+        mprod = (mprod >> 1) + (mprod & 1); // rounding to nearest
+        carry = mprod >> 53;    // \in {0, 1}
+        mprod >>= carry;
+        expn += carry;
+        mtsa = mprod & (((uint64_t) 1 << 52) - 1);
+        expn &= (uint64_t) 0x7FFu;
+        goto ret;
+    } else if (0 >= (int64_t) expn && (int64_t) expn >= -52) { // results in subnormal or normal or 0
+        mprod >>= (-1) * expn + 1;
+        expn = 0;
+        mprod >>= (52 - 1);
+        mprod = (mprod >> 1) + (mprod & 1); // rounding to nearest
+        carry = mprod >> 52;    // \in {0, 1}
+        expn += carry;
+        mtsa = mprod & (((uint64_t) 1 << 52) - 1);
+        goto ret;
+    } else if ((int64_t) expn < -52) {  // results in 0
+        mtsa = 0;
+        expn = 0;
+        goto ret;
+    }
+
 ret:;
     return (DOUBLE) {.bits = sign << 63 | expn << 52 | mtsa};
 }
