@@ -1,5 +1,5 @@
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include "double.h"
 #include "fls.h"
 
@@ -29,7 +29,7 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
     }
 
     /* else */
-    if (!get_expn(x) && !get_expn(y)) { // subnormal * subnormal = 0
+    if (!get_expn(x) && !get_expn(y)) {  // subnormal * subnormal = 0
         expn = 0;
         mtsa = 0;
         goto ret;
@@ -38,41 +38,44 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
         x.bits = y.bits;
         y.bits = temp;
     }
-    __uint128_t mprod;  // product of mantissas
-    if (!get_expn(x)) { // x is subnormal and y is normal
-        mprod = (__uint128_t) ((uint64_t) get_mtsa(x)) * ((uint64_t) 1 << 52 | get_mtsa(y));
-        expn = fls64(mprod >> 52) - 12; // 64 = 12 + 52
-        mprod <<= expn; // reposition
-        expn = get_expn(y) - 1022 - expn; // may be negative
-    } else {    // if both normal
-        mprod = (__uint128_t) ((uint64_t) 1 << 52 | get_mtsa(x)) * ((uint64_t) 1 << 52 | get_mtsa(y));
-        int carry = mprod >> (52 + 52 + 1); // \in {0, 1}
+    __uint128_t mprod;   // product of mantissas
+    if (!get_expn(x)) {  // x is subnormal and y is normal
+        mprod = (__uint128_t)((uint64_t) get_mtsa(x)) *
+                ((uint64_t) 1 << 52 | get_mtsa(y));
+        expn = fls64(mprod >> 52) - 12;    // 64 = 12 + 52
+        mprod <<= expn;                    // reposition
+        expn = get_expn(y) - 1022 - expn;  // may be negative
+    } else {                               // if both normal
+        mprod = (__uint128_t)((uint64_t) 1 << 52 | get_mtsa(x)) *
+                ((uint64_t) 1 << 52 | get_mtsa(y));
+        int carry = mprod >> (52 + 52 + 1);  // \in {0, 1}
         mprod >>= carry;
-        expn = get_expn(x) + get_expn(y) - 1023 + carry;    // may be negative
+        expn = get_expn(x) + get_expn(y) - 1023 + carry;  // may be negative
     }
     // Denoting mprod[127:0], mprod[104] is guaranteed to be 1.
 
     /* choose and generate valid format for output */
-    if ((int64_t) expn >= 0x7FF) { // magnitude too big, rounding up to \infty
+    if ((int64_t) expn >= 0x7FF) {  // magnitude too big, rounding up to \infty
         expn = 0x7FFu;
         mtsa = 0;
         goto ret;
-    } else if ((int64_t) expn > 0) {    // results in normal or \infty
+    } else if ((int64_t) expn > 0) {  // results in normal or \infty
         mprod >>= (52 - 1);
-        mprod = (mprod >> 1) + (mprod & 1); // rounding to nearest
-        int carry = mprod >> 53;    // \in {0, 1}
+        mprod = (mprod >> 1) + (mprod & 1);  // rounding to nearest
+        int carry = mprod >> 53;             // \in {0, 1}
         mprod >>= carry;
         expn += carry;
         if (expn == 0x7FF)
             mtsa = 0;
         mtsa = mprod & (((uint64_t) 1 << 52) - 1);
         goto ret;
-    } else if (0 >= (int64_t) expn && (int64_t) expn >= -52) { // results in subnormal or normal or 0
+    } else if (0 >= (int64_t) expn &&
+               (int64_t) expn >= -52) {  // results in subnormal or normal or 0
         mprod >>= 1 - expn;
         expn = 0;
         mprod >>= (52 - 1);
-        mprod = (mprod >> 1) + (mprod & 1); // rounding to nearest
-        int carry = mprod >> 52;    // \in {0, 1}
+        mprod = (mprod >> 1) + (mprod & 1);  // rounding to nearest
+        int carry = mprod >> 52;             // \in {0, 1}
         expn += carry;
         // expn == 1 would not be a special case
         mtsa = mprod & (((uint64_t) 1 << 52) - 1);
@@ -84,6 +87,5 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
     }
 
 ret:;
-    return (DOUBLE) {.bits = sign << 63 | expn << 52 | mtsa};
+    return (DOUBLE){.bits = sign << 63 | expn << 52 | mtsa};
 }
-

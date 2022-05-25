@@ -1,5 +1,5 @@
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include "double.h"
@@ -12,12 +12,15 @@ int main()
     srand(time(NULL));
     int pass = 0, fail = 0;
     for (int i = 0; i < TESTNUM; i++) {
-        DOUBLE x = {.bits = (uint64_t) rand() << 48 | (uint64_t) rand() << 32 | (uint64_t) rand() << 16 | (uint64_t) rand()};
-        DOUBLE y = {.bits = (uint64_t) rand() << 48 | (uint64_t) rand() << 32 | (uint64_t) rand() << 16 | (uint64_t) rand()};
-        DOUBLE ref = (DOUBLE) {.represent = x.represent * y.represent};
+        DOUBLE x = {.bits = (uint64_t) rand() << 48 | (uint64_t) rand() << 32 |
+                            (uint64_t) rand() << 16 | (uint64_t) rand()};
+        DOUBLE y = {.bits = (uint64_t) rand() << 48 | (uint64_t) rand() << 32 |
+                            (uint64_t) rand() << 16 | (uint64_t) rand()};
+        DOUBLE ref = (DOUBLE){.represent = x.represent * y.represent};
         DOUBLE my = mult(x, y);
-        if ((ref.bits | ((uint64_t) 1 << 51)) == (my.bits | ((uint64_t) 1 << 51))) {
-        // if (ref.bits == my.bits) {
+        if ((ref.bits | ((uint64_t) 1 << 51)) ==
+            (my.bits | ((uint64_t) 1 << 51))) {
+            // if (ref.bits == my.bits) {
             // puts("passed");
             pass++;
         } else {
