@@ -2,8 +2,6 @@
 #include <stdint.h>
 #include "double.h"
 
-// TODO: subnormal numbers, underflow
-
 DOUBLE mult(DOUBLE x, DOUBLE y)
 {
     /* if NaN involved */
@@ -40,16 +38,26 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
         x.bits = y.bits;
         y.bits = temp;
     }
+    __uint128_t mprod;
+    int carry;
     if (!get_expn(x)) { // x is subnormal and y is normal
-        // TODO
-
+        mprod = ((__uint128_t) get_mtsa(x)) * ((__uint128_t) 1 << 52 | get_mtsa(y));
+        expn = 0;
+        uint64_t temp = mprod >> 52;
+        while (!(temp >> 52)) {
+            temp <<= 1;
+            expn++;
+        }
+        mprod <<= expn;
+        expn = (-1) * expn;
+        expn += get_expn(y) - 1022; // may be negative
+    } else {    // if both normal
+        mprod = ((__uint128_t) 1 << 52 | get_mtsa(x)) * ((__uint128_t) 1 << 52 | get_mtsa(y));
+        carry = mprod >> (52 + 52 + 1); // \in {0, 1}
+        mprod >>= carry;
+        expn = get_expn(x) + get_expn(y) - 1023 + carry;    // may be negative
     }
 
-    /* if both normal */
-    __uint128_t mprod = ((__uint128_t) 1 << 52 | get_mtsa(x)) * ((__uint128_t) 1 << 52 | get_mtsa(y));
-    int carry = mprod >> (52 + 52 + 1); // \in {0, 1}
-    mprod >>= carry;
-    expn = get_expn(x) + get_expn(y) - 1023 + carry;
     if ((int64_t) expn >= 0x07FF) { // magnitude too big, rounding up to \infty
         expn = 0x7FFu;
         mtsa = 0;
@@ -60,7 +68,10 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
         carry = mprod >> 53;    // \in {0, 1}
         mprod >>= carry;
         expn += carry;
-        mtsa = mprod & (((uint64_t) 1 << 52) - 1);
+        if (expn == 0x07FF)
+            mtsa = 0;
+        else
+            mtsa = mprod & (((uint64_t) 1 << 52) - 1);
         expn &= (uint64_t) 0x7FFu;
         goto ret;
     } else if (0 >= (int64_t) expn && (int64_t) expn >= -52) { // results in subnormal or normal or 0
@@ -73,8 +84,8 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
         mtsa = mprod & (((uint64_t) 1 << 52) - 1);
         goto ret;
     } else if ((int64_t) expn < -52) {  // results in 0
-        mtsa = 0;
         expn = 0;
+        mtsa = 0;
         goto ret;
     }
 

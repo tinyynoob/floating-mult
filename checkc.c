@@ -5,7 +5,7 @@
 #include "double.h"
 #include "mult.h"
 
-#define TESTNUM 1000000
+#define TESTNUM 100000000
 
 int main()
 {
