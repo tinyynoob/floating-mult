@@ -1,8 +1,8 @@
+#ifndef __DOUBLE_H
+#define __DOUBLE_H
+
 #include <stdint.h>
 #include <stdio.h>
-
-#ifndef DOUBLE_H
-#define DOUBLE_H
 
 typedef union ieee_double_precision DOUBLE;
 union ieee_double_precision {

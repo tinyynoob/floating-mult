@@ -1,7 +1,8 @@
+#ifndef __MULT_H
+#define __MULT_H
+
 #include "double.h"
 
-#ifndef MULT_H
-#define MULT_H
 DOUBLE mult(DOUBLE x, DOUBLE y);
 
 #endif
