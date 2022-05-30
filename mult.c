@@ -65,9 +65,7 @@ DOUBLE mult(DOUBLE x, DOUBLE y)
         int carry = mprod >> 53;             // \in {0, 1}
         mprod >>= carry;
         expn += carry;
-        if (expn == 0x7FF)
-            mtsa = 0;
-        mtsa = mprod & (((uint64_t) 1 << 52) - 1);
+        mtsa = (expn == 0x7FF) ? 0 : mprod & (((uint64_t) 1 << 52) - 1);
         goto ret;
     } else if (0 >= (int64_t) expn &&
                (int64_t) expn >= -52) {  // results in subnormal or normal or 0
