@@ -64,56 +64,116 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     end
 
     reg calend;
-    reg [63:0] Z;
     always @(posedge CLK) begin
         if (RESET) begin
-            Z <= 0;
             calend <= 0;
         end
         else if (inend && calcount == 0) begin
             // A is NaN
-            if (A[62:52] == {11{1'b1}} && A[51:0]) begin
-                Z <= A;
+            if (A[62:52] == {11{1'b1}} && A[51:0])
                 calend <= 1;
-            end
             // B is NaN
-            else if (B[62:52] == {11{1'b1}} && B[51:0]) begin
-                Z <= B;
+            else if (B[62:52] == {11{1'b1}} && B[51:0])
                 calend <= 1;
-            end
             // A is 0 and B is \infty
-            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0]) begin
-                Z[63] <= A[63] ^ B[63];
-                Z[62:52] <= {11{1'b1}};
-                Z[0] <= 1;
+            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0])
                 calend <= 1;
-            end
             // B is 0 and A is \infty
-            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0]) begin
-                Z[63] <= A[63] ^ B[63];
-                Z[62:52] <= {11{1'b1}};
-                Z[0] <= 1;
+            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0])
                 calend <= 1;
-            end
             // A or B is 0 and both not \infty
-            else if (!A[62:0] || !B[62:0]) begin
-                Z[63] <= A[63] ^ B[63];
+            else if (!A[62:0] || !B[62:0])
                 calend <= 1;
-                // Z[62:0] <= 0;    originally 0
-            end
             // A and B are subnormal numbers
-            else if (!A[62:52] && A[51:0] && !B[62:52] && B[51:0]) begin
-                Z[63] <= A[63] ^ B[63];
+            else if (!A[62:52] && A[51:0] && !B[62:52] && B[51:0])
                 calend <= 1;
-                // Z[62:0] <= 0;
-            end
         end
         // still much to do
         // ...
     end
+
+
+    reg sign;
+    always @(posedge CLK) begin
+        if (RESET) begin
+            sign <= 0;
+        end
+        else if (inend && calcount == 0) begin
+            // A is NaN
+            if (A[62:52] == {11{1'b1}} && A[51:0])
+                sign <= A[63];
+            // B is NaN
+            else if (B[62:52] == {11{1'b1}} && B[51:0])
+                sign <= B[63];
+            // Otherwise
+            else
+                sign <= A[63] ^ B[63];
+        end
+    end
+
+    reg [10:0] expn;    // 11-bit
+    reg [51:0] frac;    // 52-bit
+    always @(posedge CLK) begin
+        if (RESET) begin
+            expn <= 0;
+        end
+        else if (inend && calcount == 0) begin
+            // A is NaN
+            if (A[62:52] == {11{1'b1}} && A[51:0]) begin
+                expn <= A[62:52];
+            end
+            // B is NaN
+            else if (B[62:52] == {11{1'b1}} && B[51:0]) begin
+                expn <= B[62:52];
+            end
+            // A is 0 and B is \infty
+            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0]) begin
+                expn <= {11{1'b1}};
+            end
+            // B is 0 and A is \infty
+            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0]) begin
+                expn <= {11{1'b1}};
+            end
+            // else
+            // expn <= 0
+            // no need to set
+        end
+        // still much to do
+        // ...
+    end
+ 
+    always @(posedge CLK) begin
+        if (RESET) begin
+            frac <= 0;
+        end
+        else if (inend && calcount == 0) begin
+            // A is NaN
+            if (A[62:52] == {11{1'b1}} && A[51:0]) begin
+                frac <= A[51:0];
+            end
+            // B is NaN
+            else if (B[62:52] == {11{1'b1}} && B[51:0]) begin
+                frac <= B[51:0];
+            end
+            // A is 0 and B is \infty
+            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0]) begin
+                frac[0] <= 1;
+            end
+            // B is 0 and A is \infty
+            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0]) begin
+                frac[0] <= 1;
+            end
+            // else
+            // frac <= 0
+            // no need to set
+        end
+        // still much to do
+        // ...
+    end
+ 
     
     reg [105:0] mprod;   // 106 = 2 * (52 + 1)
-    // cut the multiplication to 4 clock-cycles
+    // divide the multiplication to 4 clock-cycles
     always @(posedge CLK) begin
         // no need to reset
         // starting multiplication after possibly swap
