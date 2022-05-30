@@ -23,7 +23,7 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         else if (incount == 15)
             inend <= 1;
     end
-        
+
     reg [63:0] A, B;
     reg subnormal;  // if there is subnormal number
     always @(posedge CLK) begin
@@ -92,13 +92,67 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         // ...
     end
 
+    reg [25:0] tmpbuf;  // temp buffer
+    always @(posedge CLK) begin
+        // no need to reset
+        /* help computing @idxMsb */
+        if (!calend && subnormal && calcount == 1) begin
+            tmpbuf <= (B[51:0] >= {1'b1, 26'b0}) ? B[51:26] : B[25:0];
+        end
+        else if (!calend && subnormal && calcount == 2) begin
+            tmpbuf[25:13] <= 13'd0;
+            tmpbuf[12:0] <= (tmpbuf >= {1'b1, 13'b0}) ? tmpbuf[25:13] : tmpbuf[12:0];
+        end
+        else if (!calend && subnormal && calcount == 3) begin
+            tmpbuf[12:7] <= 6'd0;
+            if (tmpbuf[12:0] >= {1'b1, 7'b0})
+                tmpbuf[6:0] <= {tmpbuf[12:7], 1'b0};    // padding at right
+            else
+                tmpbuf[6:0] <= tmpbuf[6:0];
+        end
+    end
+
+    /* Index the MSB of @B[51:0], leftmost = 1, rightmost = 52
+     */
+    reg [5:0] idxMsb;
+    reg [2:0] msb_at_block;
+    always @(posedge CLK) begin
+        // no need to reset
+        if (!calend && subnormal && calcount == 1)
+            msb_at_block[2] <= (B[51:0] >= {1'b1, 26'b0});
+        else if (!calend && subnormal&& calcount == 2)
+            msb_at_block[1] <= (tmpbuf >= {1'b1, 13'b0});
+        else if (!calend && subnormal&& calcount == 3)
+            msb_at_block[0] <= (tmpbuf[12:0] >= {1'b1, 7'b0});
+    end
+
+    always @(posedge CLK) begin
+        // no need to reset
+        if (!calend && subnormal && calcount == 3)
+            idxMsb <= (2'd3 - msb_at_block[2:1]) * 13;
+        else if (!calend && subnormal && calcount == 4) begin
+            if (tmpbuf[6])
+                idxMsb <= ~msb_at_block[0] * 6 + 1;
+            else if (tmpbuf[5])
+                idxMsb <= ~msb_at_block[0] * 6 + 2;
+            else if (tmpbuf[4])
+                idxMsb <= ~msb_at_block[0] * 6 + 3;
+            else if (tmpbuf[3])
+                idxMsb <= ~msb_at_block[0] * 6 + 4;
+            else if (tmpbuf[2])
+                idxMsb <= ~msb_at_block[0] * 6 + 5;
+            else if (tmpbuf[1])
+                idxMsb <= ~msb_at_block[0] * 6 + 6;
+            else
+                idxMsb <= ~msb_at_block[0] * 6 + 7;
+        end
+    end
+
 
     reg sign;
     always @(posedge CLK) begin
-        if (RESET) begin
-            sign <= 0;
-        end
-        else if (inend && calcount == 0) begin
+        // no need to reset
+        if (inend && calcount == 0) begin
             // A is NaN
             if (A[62:52] == {11{1'b1}} && A[51:0])
                 sign <= A[63];
@@ -114,58 +168,46 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     reg [10:0] expn;    // 11-bit
     reg [51:0] frac;    // 52-bit
     always @(posedge CLK) begin
-        if (RESET) begin
-            expn <= 0;
-        end
-        else if (inend && calcount == 0) begin
+        // no need to reset
+        if (inend && calcount == 0) begin
             // A is NaN
-            if (A[62:52] == {11{1'b1}} && A[51:0]) begin
+            if (A[62:52] == {11{1'b1}} && A[51:0])
                 expn <= A[62:52];
-            end
             // B is NaN
-            else if (B[62:52] == {11{1'b1}} && B[51:0]) begin
+            else if (B[62:52] == {11{1'b1}} && B[51:0])
                 expn <= B[62:52];
-            end
             // A is 0 and B is \infty
-            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0]) begin
+            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0])
                 expn <= {11{1'b1}};
-            end
             // B is 0 and A is \infty
-            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0]) begin
+            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0])
                 expn <= {11{1'b1}};
-            end
-            // else
-            // expn <= 0
-            // no need to set
+            // not special case
+            else
+                expn <= 11'd0;
         end
         // still much to do
         // ...
     end
- 
+
+
     always @(posedge CLK) begin
-        if (RESET) begin
-            frac <= 0;
-        end
-        else if (inend && calcount == 0) begin
+        if (inend && calcount == 0) begin
             // A is NaN
-            if (A[62:52] == {11{1'b1}} && A[51:0]) begin
+            if (A[62:52] == {11{1'b1}} && A[51:0])
                 frac <= A[51:0];
-            end
             // B is NaN
-            else if (B[62:52] == {11{1'b1}} && B[51:0]) begin
+            else if (B[62:52] == {11{1'b1}} && B[51:0])
                 frac <= B[51:0];
-            end
             // A is 0 and B is \infty
-            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0]) begin
+            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0])
                 frac[0] <= 1;
-            end
             // B is 0 and A is \infty
-            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0]) begin
+            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0])
                 frac[0] <= 1;
-            end
-            // else
-            // frac <= 0
-            // no need to set
+            // not special case
+            else
+                frac <= 52'd0;
         end
         // still much to do
         // ...
