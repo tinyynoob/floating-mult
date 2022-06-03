@@ -16,7 +16,7 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             incount <= incount + 1;
     end
 
-    reg inend;
+    reg inend;  // input-stage end
     always @(posedge CLK) begin
         if (RESET)
             inend <= 0;
@@ -32,9 +32,10 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             A <= A << 8;
             A[7:0] <= DATA_IN;
         end
-        else if (inend && !subnormal && !A[62:52] && A[51:0])
         // subnormal number would be swapped to B if there is
+        else if (inend && calcount == 0 && !A[62:52] && A[51:0]) begin
             A <= B;
+        end
     end
 
     always @(posedge CLK) begin
@@ -43,11 +44,13 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             B <= B << 8;
             B[7:0] <= DATA_IN;
         end
-        else if (inend && !subnormal && !A[62:52] && A[51:0])
+        // subnormal number would be swapped to B if there is
+        else if (inend && calcount == 0 && !A[62:52] && A[51:0]) begin
             B <= A;
+        end
     end
 
-    reg [2:0] calcount; // at calculation stage
+    reg [3:0] calcount; // calculation-stage counter
     always @(posedge CLK) begin
         if (RESET)
             calcount <= 0;
@@ -63,7 +66,7 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             subnormal <= 1;
     end
 
-    reg calend;
+    reg calend; // calculation-stage end
     always @(posedge CLK) begin
         if (RESET) begin
             calend <= 0;
@@ -84,31 +87,43 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             // A or B is 0 and both not \infty
             else if (!A[62:0] || !B[62:0])
                 calend <= 1;
-            // A and B are subnormal numbers
+            // A and B are both subnormal numbers
             else if (!A[62:52] && A[51:0] && !B[62:52] && B[51:0])
                 calend <= 1;
         end
-        // still much to do
-        // ...
+        else if (!calend && calcount == 8) begin
+            calend <= 1;
+        end
     end
 
-    reg [25:0] tmpbuf;  // temp buffer
+
+    reg [105:0] mprod;   // 106 = 2 * (52 + 1)
     always @(posedge CLK) begin
         // no need to reset
-        /* help computing @idxMsb */
-        if (!calend && subnormal && calcount == 1) begin
-            tmpbuf <= (B[51:0] >= {1'b1, 26'b0}) ? B[51:26] : B[25:0];
+        // starting multiplication after possibly swap
+        // divide the multiplication to 4 clock-cycles
+        if (!calend && calcount == 1) begin
+            mprod <= A * B[13:0];
         end
-        else if (!calend && subnormal && calcount == 2) begin
-            tmpbuf[25:13] <= 13'd0;
-            tmpbuf[12:0] <= (tmpbuf >= {1'b1, 13'b0}) ? tmpbuf[25:13] : tmpbuf[12:0];
+        else if (!calend && calcount == 2) begin
+            mprod <= mprod + A * {B[26:14], 14'd0};
         end
-        else if (!calend && subnormal && calcount == 3) begin
-            tmpbuf[12:7] <= 6'd0;
-            if (tmpbuf[12:0] >= {1'b1, 7'b0})
-                tmpbuf[6:0] <= {tmpbuf[12:7], 1'b0};    // padding at right
-            else
-                tmpbuf[6:0] <= tmpbuf[6:0];
+        else if (!calend && calcount == 3) begin
+            mprod <= mprod + A * {B[39:27], 27'd0};
+        end
+        else if (!calend && calcount == 4) begin
+            mprod <= mprod + A * {~subnormal, B[51:40], 40'd0};
+        end
+        // align
+        else if (!calend && calcount == 5) begin
+            if (subnormal)
+                mprod <= mprod << idxMsb;
+            else if (mprod[105])
+                mprod <= mprod >> 1;
+        end
+        // rounding
+        else if (!calend && calcount == 6) begin
+            {mprod[105], mprod[103:52]} <= mprod[103:52] + mprod[51];
         end
     end
 
@@ -116,13 +131,14 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
      */
     reg [5:0] idxMsb;
     reg [2:0] msb_at_block;
+    reg signed [25:0] tmpbuf;  // temp buffer
     always @(posedge CLK) begin
         // no need to reset
         if (!calend && subnormal && calcount == 1)
             msb_at_block[2] <= (B[51:0] >= {1'b1, 26'b0});
-        else if (!calend && subnormal&& calcount == 2)
-            msb_at_block[1] <= (tmpbuf >= {1'b1, 13'b0});
-        else if (!calend && subnormal&& calcount == 3)
+        else if (!calend && subnormal && calcount == 2)
+            msb_at_block[1] <= (tmpbuf[25:0] >= {1'b1, 13'b0});
+        else if (!calend && subnormal && calcount == 3)
             msb_at_block[0] <= (tmpbuf[12:0] >= {1'b1, 7'b0});
     end
 
@@ -149,6 +165,48 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     end
 
 
+    wire signed [11:0] sign_Aexpn = {1'b0, A[62:52]};
+    wire signed [11:0] sign_Bexpn = {1'b0, B[62:52]};
+    wire signed [1:0] sign_carry = {1'b0, mprod[105]};
+    wire signed [6:0] sign_idxMsb = {1'b0, idxMsb};
+
+    always @(posedge CLK) begin
+        // no need to reset
+        /* help computing @idxMsb */
+        if (!calend && subnormal && calcount == 1) begin
+            tmpbuf <= (B[51:0] >= {1'b1, 26'b0}) ? B[51:26] : B[25:0];
+        end
+        else if (!calend && subnormal && calcount == 2) begin
+            tmpbuf[25:13] <= 13'd0;
+            // try to do unsigned compare
+            tmpbuf[12:0] <= (tmpbuf[25:0] >= {1'b1, 13'b0}) ? tmpbuf[25:13] : tmpbuf[12:0];
+        end
+        else if (!calend && subnormal && calcount == 3) begin
+            tmpbuf[12:7] <= 6'd0;
+            if (tmpbuf[12:0] >= {1'b1, 7'b0})
+                tmpbuf[6:0] <= {tmpbuf[12:7], 1'b0};    // padding at right
+            else
+                tmpbuf[6:0] <= tmpbuf[6:0];
+        end
+        /* help computing @expn */
+        else if (!calend && calcount == 5) begin
+            if (subnormal)
+                tmpbuf <= sign_Aexpn - 11'd1022 - sign_idxMsb;
+            else
+                tmpbuf <= sign_Aexpn + sign_Bexpn - 11'd1023 + sign_carry;
+        end
+        else if (!calend && calcount == 7) begin
+            if (tmpbuf >= 12'b0111_1111_1111)
+                tmpbuf <= 0;
+            else if (tmpbuf > 0)
+                tmpbuf <= tmpbuf + sign_carry;
+            else if (tmpbuf >= -52)
+                tmpbuf <= {{24{1'b0}}, sign_carry};
+            else
+                tmpbuf <= 0;
+        end
+    end
+
     reg sign;
     always @(posedge CLK) begin
         // no need to reset
@@ -168,7 +226,7 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     reg [10:0] expn;    // 11-bit
     reg [51:0] frac;    // 52-bit
     always @(posedge CLK) begin
-        // no need to reset
+        // no reset
         if (inend && calcount == 0) begin
             // A is NaN
             if (A[62:52] == {11{1'b1}} && A[51:0])
@@ -186,12 +244,13 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             else
                 expn <= 11'd0;
         end
-        // still much to do
-        // ...
+        else if (!calend && calcount == 8) begin
+            expn <= tmpbuf[10:0];
+        end
     end
 
-
     always @(posedge CLK) begin
+        // no reset
         if (inend && calcount == 0) begin
             // A is NaN
             if (A[62:52] == {11{1'b1}} && A[51:0])
@@ -209,29 +268,9 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             else
                 frac <= 52'd0;
         end
-        // still much to do
-        // ...
-    end
- 
-    
-    reg [105:0] mprod;   // 106 = 2 * (52 + 1)
-    // divide the multiplication to 4 clock-cycles
-    always @(posedge CLK) begin
-        // no need to reset
-        // starting multiplication after possibly swap
-        if (!calend && calcount == 1) begin
-            mprod <= A * B[13:0];
-        end
-        else if (!calend && calcount == 2) begin
-            mprod <= mprod + A * {B[26:14], 14'd0};
-        end
-        else if (!calend && calcount == 3) begin
-            mprod <= mprod + A * {B[39:27], 27'd0};
-        end
-        else if (!calend && calcount == 4) begin
-            mprod <= mprod + A * {~subnormal, B[51:40], 40'd0};
+        else if (!calend && calcount == 8) begin
+            frac <= mprod[103:52];
         end
     end
-
 
 endmodule
