@@ -125,6 +125,12 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         else if (!calend && calcount == 6) begin
             {mprod[105], mprod[103:52]} <= mprod[103:52] + mprod[51];
         end
+        else if (!calend && calcount == 7) begin
+            if (tmpbuf >= sign_0x7FF)
+                mprod[103:52] <= 0;
+            else if (tmpbuf < -52)
+                mprod[103:52] <= 0;
+        end
     end
 
     /* Index the MSB of @B[51:0], leftmost = 1, rightmost = 52
@@ -169,6 +175,8 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     wire signed [11:0] sign_Bexpn = {1'b0, B[62:52]};
     wire signed [1:0] sign_carry = {1'b0, mprod[105]};
     wire signed [6:0] sign_idxMsb = {1'b0, idxMsb};
+    wire signed [11:0] sign_0x7FF = 12'b0111_1111_1111;
+    wire signed sign_zero = 0;
 
     always @(posedge CLK) begin
         // no need to reset
@@ -196,14 +204,14 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
                 tmpbuf <= sign_Aexpn + sign_Bexpn - 11'd1023 + sign_carry;
         end
         else if (!calend && calcount == 7) begin
-            if (tmpbuf >= 12'b0111_1111_1111)
-                tmpbuf <= 0;
-            else if (tmpbuf > 0)
-                tmpbuf <= tmpbuf + sign_carry;
+            if (tmpbuf >= sign_0x7FF)
+                tmpbuf[10:0] <= {11{1'b1}};
+            else if (tmpbuf > sign_zero)
+                tmpbuf[10:0] <= tmpbuf + sign_carry;
             else if (tmpbuf >= -52)
-                tmpbuf <= {{24{1'b0}}, sign_carry};
+                tmpbuf[10:0] <= {{9{1'b0}}, sign_carry};
             else
-                tmpbuf <= 0;
+                tmpbuf[10:0] <= 0;
         end
     end
 

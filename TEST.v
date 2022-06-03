@@ -2,13 +2,15 @@
 `include "fp_mult.v"
 
 module TEST();
-    reg [63:0] x [0:1600];
-    reg [63:0] y [0:1600];
-    reg [63:0] ref [0:1600];
+    parameter CASENUM = 10000;
+    reg [63:0] x [0:CASENUM - 1];
+    reg [63:0] y [0:CASENUM - 1];
+    reg [63:0] ref [0:CASENUM - 1];
     reg [63:0] myout;
     reg CLK, RESET, ENABLE;
     reg [7:0] DATA_IN;
     integer index, counter;
+    integer errcnt;
     wire READY;
     wire [7:0] DATA_OUT;
 
@@ -28,9 +30,10 @@ module TEST();
         $readmemh("y_pattern.dat", y);
         $readmemh("reference.dat", ref);
 
+        errcnt = 0;
         CLK = 0;
         ENABLE = 0;
-        for (index = 0; index < 10; index = index + 1) begin
+        for (index = 0; index < CASENUM; index = index + 1) begin
             RESET = 1;
             #2 RESET = 0;
             ENABLE = 1;
@@ -72,15 +75,18 @@ module TEST();
                 endcase
                 #2;
             end
-            $display("%b_%b_%b", x[index][63], x[index][62:52], x[index][51:0]);
-            $display("%b_%b_%b", y[index][63], y[index][62:52], y[index][51:0]);
-            $display("Output of module:");
-            $display("%b_%b_%b", myout[63], myout[62:52], myout[51:0]);
-            $display("Reference answer:");
-            $display("%b_%b_%b", ref[index][63], ref[index][62:52], ref[index][51:0]);
-            if (myout != ref[index])
-                $finish;
+            if (myout != ref[index]) begin
+                $display("%t", $time);
+                $display("%b_%b_%b", x[index][63], x[index][62:52], x[index][51:0]);
+                $display("%b_%b_%b", y[index][63], y[index][62:52], y[index][51:0]);
+                $display("Output of module:");
+                $display("%b_%b_%b", myout[63], myout[62:52], myout[51:0]);
+                $display("Reference answer:");
+                $display("%b_%b_%b\n", ref[index][63], ref[index][62:52], ref[index][51:0]);
+                errcnt = errcnt + 1;
+            end
         end
+    $display("Total error: %d /%d", errcnt, CASENUM);
     $finish;
     end
 endmodule
