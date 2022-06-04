@@ -40,8 +40,8 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     always @(posedge CLK) begin
         // no need to reset
         if (ENABLE && !incount[3]) begin
-            A <= A << 8;
-            A[7:0] <= DATA_IN;
+            A <= A >> 8;
+            A[63:56] <= DATA_IN;
         end
         // subnormal number would be swapped to B if there is
         else if (inend && calcount == 0 && !A[62:52] && A[51:0]) begin
@@ -52,8 +52,8 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     always @(posedge CLK) begin
         // no need to reset
         if (ENABLE && incount[3]) begin
-            B <= B << 8;
-            B[7:0] <= DATA_IN;
+            B <= B >> 8;
+            B[63:56] <= DATA_IN;
         end
         // subnormal number would be swapped to B if there is
         else if (inend && calcount == 0 && !A[62:52] && A[51:0]) begin
@@ -330,14 +330,14 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         // no need to reset
         if (calend && !outend) begin
             case (outcount)
-                0: DATA_OUT <= {sign, expn[10:4]};
-                1: DATA_OUT <= {expn[3:0], frac[51:48]};
-                2: DATA_OUT <= frac[47:40];
-                3: DATA_OUT <= frac[39:32];
-                4: DATA_OUT <= frac[31:24];
-                5: DATA_OUT <= frac[23:16];
-                6: DATA_OUT <= frac[15:8];
-                7: DATA_OUT <= frac[7:0];
+                0: DATA_OUT <= frac[7:0];
+                1: DATA_OUT <= frac[15:8];
+                2: DATA_OUT <= frac[23:16];
+                3: DATA_OUT <= frac[31:24];
+                4: DATA_OUT <= frac[39:32];
+                5: DATA_OUT <= frac[47:40];
+                6: DATA_OUT <= {expn[3:0], frac[51:48]};
+                7: DATA_OUT <= {sign, expn[10:4]};
             endcase
         end
     end
