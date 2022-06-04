@@ -1,4 +1,4 @@
-`timescale 1ns/10ps
+`timescale 10ns/100ps
 `include "fp_mult.v"
 
 module TEST();

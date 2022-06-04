@@ -1,5 +1,5 @@
 
-`timescale 1ns/10ps
+`timescale 10ns/100ps
 module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     input CLK, RESET, ENABLE;
     input [7:0] DATA_IN;
@@ -112,8 +112,13 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         end
     end
 
-
+    /* Index the MSB of @B[51:0], leftmost = 1, rightmost = 52
+     */
+    reg [5:0] idxMsb;
+    reg [2:0] msb_at_block;
+    reg [25:0] tmpbuf;  // temp buffer
     reg [105:0] mprod;   // 106 = 2 * (52 + 1)
+    reg signed [12:0] expn;    // 13-bit
     always @(posedge CLK) begin
         // no need to reset
         // starting multiplication after possibly swap
@@ -138,26 +143,21 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
                 mprod <= mprod >> 1;
         end
         else if (!calend && calcount == 6) begin
-            if (sign_zero >= tmpbuf && tmpbuf >= -52)
-                mprod <= mprod >> (2 + ~tmpbuf);
+            if (sign_zero >= expn && expn >= -52)
+                mprod <= mprod >> (2 + ~expn);
         end
         // rounding
         else if (!calend && calcount == 7) begin
             {mprod[105], mprod[103:52]} <= mprod[103:52] + mprod[51];
         end
         else if (!calend && calcount == 8) begin
-            if (tmpbuf >= sign_0x7FF)
+            if (expn >= sign_0x7FF)
                 mprod[103:52] <= 0;
-            else if (tmpbuf < -52)
+            else if (expn < -52)
                 mprod[103:52] <= 0;
         end
     end
 
-    /* Index the MSB of @B[51:0], leftmost = 1, rightmost = 52
-     */
-    reg [5:0] idxMsb;
-    reg [2:0] msb_at_block;
-    reg signed [25:0] tmpbuf;  // temp buffer
     always @(posedge CLK) begin
         // no need to reset
         if (!calend && subnormal && calcount == 1)
@@ -214,23 +214,6 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             else
                 tmpbuf[6:0] <= tmpbuf[6:0];
         end
-        /* help computing @expn */
-        else if (!calend && calcount == 5) begin
-            if (subnormal)
-                tmpbuf <= sign_Aexpn - 11'd1022 - sign_idxMsb;
-            else
-                tmpbuf <= sign_Aexpn + sign_Bexpn - 11'd1023 + sign_carry;
-        end
-        else if (!calend && calcount == 8) begin
-            if (tmpbuf >= sign_0x7FF)
-                tmpbuf[10:0] <= {11{1'b1}};
-            else if (tmpbuf > sign_zero)
-                tmpbuf[10:0] <= tmpbuf + sign_carry;
-            else if (tmpbuf >= -52)
-                tmpbuf[10:0] <= {{9{1'b0}}, sign_carry};
-            else
-                tmpbuf[10:0] <= 0;
-        end
     end
 
     reg sign;
@@ -249,29 +232,41 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         end
     end
 
-    reg [10:0] expn;    // 11-bit
     reg [51:0] frac;    // 52-bit
     always @(posedge CLK) begin
         // no reset
         if (inend && calcount == 0) begin
             // A is NaN
             if (A[62:52] == {11{1'b1}} && A[51:0])
-                expn <= A[62:52];
+                expn[10:0] <= A[62:52];
             // B is NaN
             else if (B[62:52] == {11{1'b1}} && B[51:0])
-                expn <= B[62:52];
+                expn[10:0] <= B[62:52];
             // A is 0 and B is \infty
             else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0])
-                expn <= {11{1'b1}};
+                expn[10:0] <= {11{1'b1}};
             // B is 0 and A is \infty
             else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0])
-                expn <= {11{1'b1}};
+                expn[10:0] <= {11{1'b1}};
             // not special case
             else
-                expn <= 11'd0;
+                expn[10:0] <= 11'd0;
         end
-        else if (!calend && calcount == 9) begin
-            expn <= tmpbuf[10:0];
+        else if (!calend && calcount == 5) begin
+            if (subnormal)
+                expn <= sign_Aexpn - 11'd1022 - sign_idxMsb;
+            else
+                expn <= sign_Aexpn + sign_Bexpn - 11'd1023 + sign_carry;
+        end
+        else if (!calend && calcount == 8) begin
+            if (expn >= sign_0x7FF)
+                expn[10:0] <= {11{1'b1}};
+            else if (expn > sign_zero)
+                expn[10:0] <= expn + sign_carry;
+            else if (expn >= -52)
+                expn[10:0] <= {{9{1'b0}}, sign_carry};
+            else
+                expn[10:0] <= 0;
         end
     end
 
