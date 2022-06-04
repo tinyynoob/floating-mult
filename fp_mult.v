@@ -11,20 +11,26 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
 
     reg [3:0] incount;
     reg inend;  // input-stage end
-    reg subnormal;  // if there is subnormal number
     reg [3:0] calcount; // calculation-stage counter
     reg calend; // calculation-stage end
+    reg [2:0] outcount;
+    reg outend;
+    reg subnormal;  // if there is subnormal number
     always @(posedge CLK) begin
         if (RESET)
             incount <= 0;
-        else if (ENABLE && incount == 15)
+        else if (outend)
             incount <= 0;
+        else if (ENABLE && incount == 15)
+            incount <= 15;
         else if (ENABLE)
             incount <= incount + 1;
     end
 
     always @(posedge CLK) begin
         if (RESET)
+            inend <= 0;
+        else if (outend)
             inend <= 0;
         else if (incount == 15)
             inend <= 1;
@@ -57,13 +63,8 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
 
     always @(posedge CLK) begin
         if (RESET)
-            calcount <= 0;
-        else if (inend && !calend)
-            calcount <= calcount + 1;
-    end
-
-    always @(posedge CLK) begin
-        if (RESET)
+            subnormal <= 0;
+        else if (outend)
             subnormal <= 0;
         else if (inend && calcount == 0 && 
                     ((!A[62:52] && A[51:0]) || (!B[62:52] && B[51:0])))
@@ -71,7 +72,19 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     end
 
     always @(posedge CLK) begin
+        if (RESET)
+            calcount <= 0;
+        else if (outend)
+            calcount <= 0;
+        else if (inend && !calend)
+            calcount <= calcount + 1;
+    end
+
+    always @(posedge CLK) begin
         if (RESET) begin
+            calend <= 0;
+        end
+        else if (outend) begin
             calend <= 0;
         end
         else if (inend && calcount == 0) begin
@@ -286,10 +299,10 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         end
     end
 
-    reg [2:0] outcount;
-    reg outend;
     always @(posedge CLK) begin
         if (RESET)
+            outcount <= 0;
+        else if (outend)
             outcount <= 0;
         else if (calend && !outend)
             outcount <= outcount + 1;
@@ -297,6 +310,8 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
 
     always @(posedge CLK) begin
         if (RESET)
+            outend <= 0;
+        else if (outend)
             outend <= 0;
         else if (outcount == 7)
             outend <= 1;
@@ -326,5 +341,4 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             endcase
         end
     end
-
 endmodule
