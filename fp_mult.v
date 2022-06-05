@@ -107,10 +107,12 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             else if (!A[62:52] && A[51:0] && !B[62:52] && B[51:0])
                 calend <= 1;
         end
-        else if (!calend && calcount == 9) begin
+        else if (!calend && calcount == 10) begin
             calend <= 1;
         end
     end
+
+    wire [15:0] DEBUG_expn = {{3{expn[12]}}, expn};
 
     /* Index the MSB of @B[51:0], leftmost = 1, rightmost = 52
      */
@@ -140,26 +142,20 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             if (subnormal)
                 mprod <= mprod << idxMsb;
         end
-        // align according to carry and new @expn
         else if (!calend && calcount == 6) begin
-            if (subnormal) begin
-                if (mprod[105] && sign_zero > expn && expn >= -53)
-                    mprod <= mprod >> (2 + ~expn);
-            end
-            else begin
-                if (mprod[105] && sign_zero >= expn && expn >= -52)
-                    mprod <= mprod >> (3 + ~expn);
-                else if (sign_zero >= expn && expn >= -52)
-                    mprod <= mprod >> (2 + ~expn);
-                else if (mprod[105])
-                    mprod <= mprod >> 1;
-            end
+            if (mprod[105])
+                mprod <= mprod >> 1;
+        end
+        // align according to carry and new @expn
+        else if (!calend && calcount == 7) begin
+            if (sign_zero >= expn && expn >= -52)
+                mprod <= mprod >> (2 + ~expn);
         end
         // rounding
-        else if (!calend && calcount == 7) begin
+        else if (!calend && calcount == 8) begin
             {mprod[105], mprod[103:52]} <= mprod[103:52] + mprod[51];
         end
-        else if (!calend && calcount == 8) begin
+        else if (!calend && calcount == 9) begin
             if (expn >= sign_0x7FF)
                 mprod[103:52] <= 0;
             else if (expn < -52)
@@ -221,22 +217,6 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         end
     end
 
-    reg sign;
-    always @(posedge CLK) begin
-        // no need to reset
-        if (inend && calcount == 0) begin
-            // A is NaN
-            if (A[62:52] == {11{1'b1}} && A[51:0])
-                sign <= A[63];
-            // B is NaN
-            else if (B[62:52] == {11{1'b1}} && B[51:0])
-                sign <= B[63];
-            // Otherwise
-            else
-                sign <= A[63] ^ B[63];
-        end
-    end
-
     reg [51:0] frac;    // 52-bit
     always @(posedge CLK) begin
         // no reset
@@ -257,17 +237,13 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             else
                 expn <= 0;
         end
-        else if (!calend && calcount == 5) begin
+        else if (!calend && calcount == 6) begin
             if (subnormal)
-                expn <= sign_Aexpn - 11'd1022 - sign_idxMsb;
+                expn <= sign_Aexpn - 11'd1022 - sign_idxMsb + sign_carry;
             else
                 expn <= sign_Aexpn + sign_Bexpn - 11'd1023 + sign_carry;
         end
-        else if (!calend && calcount == 6) begin
-            if (subnormal && mprod[105])
-                expn <= expn + sign_carry;
-        end
-        else if (!calend && calcount == 8) begin
+        else if (!calend && calcount == 9) begin
             if (expn >= sign_0x7FF)
                 expn[10:0] <= {11{1'b1}};
             else if (expn > sign_zero)
@@ -298,8 +274,24 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             else
                 frac <= 52'd0;
         end
-        else if (!calend && calcount == 9) begin
+        else if (!calend && calcount == 10) begin
             frac <= mprod[103:52];
+        end
+    end
+
+    reg sign;
+    always @(posedge CLK) begin
+        // no need to reset
+        if (inend && calcount == 0) begin
+            // A is NaN
+            if (A[62:52] == {11{1'b1}} && A[51:0])
+                sign <= A[63];
+            // B is NaN
+            else if (B[62:52] == {11{1'b1}} && B[51:0])
+                sign <= B[63];
+            // Otherwise
+            else
+                sign <= A[63] ^ B[63];
         end
     end
 
