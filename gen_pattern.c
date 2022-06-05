@@ -17,6 +17,15 @@ int main()
                             (uint64_t) rand() << 16 | (uint64_t) rand()};
         DOUBLE y = {.bits = (uint64_t) rand() << 48 | (uint64_t) rand() << 32 |
                             (uint64_t) rand() << 16 | (uint64_t) rand()};
+        /* generate some subnormal cases since they hardly appear */
+        if (i >= 100 && i < 1000) { 
+            x.bits &= 0x800FFFFFFFFFFFFFu;
+            y.bits &= 0x800FFFFFFFFFFFFFu;
+        } else if (i >= 100 && i < 5500) {
+            x.bits &= 0x800FFFFFFFFFFFFFu;
+        } else if (i >= 100 && i < 10000) {
+            y.bits &= 0x800FFFFFFFFFFFFFu;
+        }
         fprintf(rf, "%lX\n", mult(y, x).bits);
         fprintf(xf, "%lX\n", x.bits);
         fprintf(yf, "%lX\n", y.bits);

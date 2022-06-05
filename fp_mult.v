@@ -135,16 +135,25 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         else if (!calend && calcount == 4) begin
             mprod <= mprod + (({1'b1, A[51:0]} * {~subnormal, B[51:40]}) << 40);
         end
-        // align
+        // subnormal align
         else if (!calend && calcount == 5) begin
             if (subnormal)
                 mprod <= mprod << idxMsb;
-            else if (mprod[105])
-                mprod <= mprod >> 1;
         end
+        // align according to carry and new @expn
         else if (!calend && calcount == 6) begin
-            if (sign_zero >= expn && expn >= -52)
-                mprod <= mprod >> (2 + ~expn);
+            if (subnormal) begin
+                if (mprod[105] && sign_zero > expn && expn >= -53)
+                    mprod <= mprod >> (2 + ~expn);
+            end
+            else begin
+                if (mprod[105] && sign_zero >= expn && expn >= -52)
+                    mprod <= mprod >> (3 + ~expn);
+                else if (sign_zero >= expn && expn >= -52)
+                    mprod <= mprod >> (2 + ~expn);
+                else if (mprod[105])
+                    mprod <= mprod >> 1;
+            end
         end
         // rounding
         else if (!calend && calcount == 7) begin
@@ -171,25 +180,24 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     always @(posedge CLK) begin
         // no need to reset
         if (!calend && subnormal && calcount == 3)
-            idxMsb <= (2'd3 - msb_at_block[2:1]) * 13;
+            idxMsb <= (2'b11 - msb_at_block[2:1]) * 13;
         else if (!calend && subnormal && calcount == 4) begin
             if (tmpbuf[6])
-                idxMsb <= ~msb_at_block[0] * 6 + 1;
+                idxMsb <= idxMsb + ({3{~msb_at_block[0]}} & 6) + 1;
             else if (tmpbuf[5])
-                idxMsb <= ~msb_at_block[0] * 6 + 2;
+                idxMsb <= idxMsb + ({3{~msb_at_block[0]}} & 6) + 2;
             else if (tmpbuf[4])
-                idxMsb <= ~msb_at_block[0] * 6 + 3;
+                idxMsb <= idxMsb + ({3{~msb_at_block[0]}} & 6) + 3;
             else if (tmpbuf[3])
-                idxMsb <= ~msb_at_block[0] * 6 + 4;
+                idxMsb <= idxMsb + ({3{~msb_at_block[0]}} & 6) + 4;
             else if (tmpbuf[2])
-                idxMsb <= ~msb_at_block[0] * 6 + 5;
+                idxMsb <= idxMsb + ({3{~msb_at_block[0]}} & 6) + 5;
             else if (tmpbuf[1])
-                idxMsb <= ~msb_at_block[0] * 6 + 6;
+                idxMsb <= idxMsb + ({3{~msb_at_block[0]}} & 6) + 6;
             else
-                idxMsb <= ~msb_at_block[0] * 6 + 7;
+                idxMsb <= idxMsb + ({3{~msb_at_block[0]}} & 6) + 7;
         end
     end
-
 
     wire signed [11:0] sign_Aexpn = {1'b0, A[62:52]};
     wire signed [11:0] sign_Bexpn = {1'b0, B[62:52]};
@@ -203,12 +211,9 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             tmpbuf <= (B[51:0] >= (1 << 26)) ? B[51:26] : B[25:0];
         end
         else if (!calend && subnormal && calcount == 2) begin
-            tmpbuf[25:13] <= 13'd0;
-            // try to do unsigned compare
             tmpbuf[12:0] <= (tmpbuf[25:0] >= (1 << 13)) ? tmpbuf[25:13] : tmpbuf[12:0];
         end
         else if (!calend && subnormal && calcount == 3) begin
-            tmpbuf[12:7] <= 6'd0;
             if (tmpbuf[12:0] >= (1 << 7))
                 tmpbuf[6:0] <= {tmpbuf[12:7], 1'b0};    // padding at right
             else
@@ -250,13 +255,17 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
                 expn[10:0] <= {11{1'b1}};
             // not special case
             else
-                expn[10:0] <= 11'd0;
+                expn <= 0;
         end
         else if (!calend && calcount == 5) begin
             if (subnormal)
                 expn <= sign_Aexpn - 11'd1022 - sign_idxMsb;
             else
                 expn <= sign_Aexpn + sign_Bexpn - 11'd1023 + sign_carry;
+        end
+        else if (!calend && calcount == 6) begin
+            if (subnormal && mprod[105])
+                expn <= expn + sign_carry;
         end
         else if (!calend && calcount == 8) begin
             if (expn >= sign_0x7FF)
