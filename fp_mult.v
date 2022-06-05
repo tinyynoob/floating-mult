@@ -107,7 +107,7 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
             else if (!A[62:52] && A[51:0] && !B[62:52] && B[51:0])
                 calend <= 1;
         end
-        else if (!calend && calcount == 10) begin
+        else if (!calend && calcount == 9) begin
             calend <= 1;
         end
     end
@@ -123,9 +123,29 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
     reg signed [12:0] expn;    // 13-bit
     always @(posedge CLK) begin
         // no need to reset
+        if (inend && calcount == 0) begin
+            // A is NaN
+            if (A[62:52] == {11{1'b1}} && A[51:0])
+                mprod[103:52] <= A[51:0];
+            // B is NaN
+            else if (B[62:52] == {11{1'b1}} && B[51:0])
+                mprod[103:52] <= B[51:0];
+            // A is 0 and B is \infty
+            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0])
+                mprod[103:52] <= 1;
+            // B is 0 and A is \infty
+            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0])
+                mprod[103:52] <= 1;
+            // A or B is 0 and both not \infty
+            else if (!A[62:0] || !B[62:0])
+                mprod[103:52] <= 0;
+            // A and B are both subnormal numbers
+            else if (!A[62:52] && A[51:0] && !B[62:52] && B[51:0])
+                mprod[103:52] <= 0;
+        end
         // starting multiplication after possibly swap
         // divide the multiplication to 4 clock-cycles
-        if (!calend && calcount == 1) begin
+        else if (!calend && calcount == 1) begin
             mprod <= {1'b1, A[51:0]} * B[13:0];
         end
         else if (!calend && calcount == 2) begin
@@ -217,7 +237,6 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         end
     end
 
-    reg [51:0] frac;    // 52-bit
     always @(posedge CLK) begin
         // no reset
         if (inend && calcount == 0) begin
@@ -252,30 +271,6 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
                 expn[10:0] <= {{9{1'b0}}, sign_carry};
             else
                 expn[10:0] <= 0;
-        end
-    end
-
-    always @(posedge CLK) begin
-        // no reset
-        if (inend && calcount == 0) begin
-            // A is NaN
-            if (A[62:52] == {11{1'b1}} && A[51:0])
-                frac <= A[51:0];
-            // B is NaN
-            else if (B[62:52] == {11{1'b1}} && B[51:0])
-                frac <= B[51:0];
-            // A is 0 and B is \infty
-            else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0])
-                frac[0] <= 1;
-            // B is 0 and A is \infty
-            else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0])
-                frac[0] <= 1;
-            // not special case
-            else
-                frac <= 52'd0;
-        end
-        else if (!calend && calcount == 10) begin
-            frac <= mprod[103:52];
         end
     end
 
@@ -326,13 +321,13 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         // no need to reset
         if (calend && !outend) begin
             case (outcount)
-                0: DATA_OUT <= frac[7:0];
-                1: DATA_OUT <= frac[15:8];
-                2: DATA_OUT <= frac[23:16];
-                3: DATA_OUT <= frac[31:24];
-                4: DATA_OUT <= frac[39:32];
-                5: DATA_OUT <= frac[47:40];
-                6: DATA_OUT <= {expn[3:0], frac[51:48]};
+                0: DATA_OUT <= mprod[59:52];
+                1: DATA_OUT <= mprod[67:60];
+                2: DATA_OUT <= mprod[75:68];
+                3: DATA_OUT <= mprod[83:76];
+                4: DATA_OUT <= mprod[91:84];
+                5: DATA_OUT <= mprod[99:92];
+                6: DATA_OUT <= {expn[3:0], mprod[103:100]};
                 7: DATA_OUT <= {sign, expn[10:4]};
             endcase
         end
