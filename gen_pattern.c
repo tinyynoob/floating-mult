@@ -4,7 +4,7 @@
 #include "mult.h"
 #include "double.h"
 
-#define CASENUM 1000000
+#define CASENUM 100000
 
 int main()
 {

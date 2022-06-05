@@ -2,11 +2,12 @@
 `include "fp_mult.v"
 
 module TEST();
-    parameter CASENUM = 10000;
+    parameter CASENUM = 20000;
     reg [63:0] x [0:CASENUM - 1];
     reg [63:0] y [0:CASENUM - 1];
     reg [63:0] ref [0:CASENUM - 1];
     reg [63:0] myout;
+    reg [63:0] bulitin_ref;
     reg CLK, RESET, ENABLE;
     reg [7:0] DATA_IN;
     integer index, counter;
@@ -75,14 +76,18 @@ module TEST();
                 endcase
                 #2;
             end
-            if (myout != ref[index]) begin
+            bulitin_ref = $realtobits($bitstoreal(x[index]) * $bitstoreal(y[index]));
+            // ignore 51th bit, which is the indicator of type of NaN
+            if (myout != ref[index] || (myout[63:52] != bulitin_ref[63:52] || myout[50:0] != bulitin_ref[50:0])) begin
                 $display("%t", $time);
                 $display("%b_%b_%b", x[index][63], x[index][62:52], x[index][51:0]);
                 $display("%b_%b_%b", y[index][63], y[index][62:52], y[index][51:0]);
-                $display("Output of module:");
+                $display("Output of the module:");
                 $display("%b_%b_%b", myout[63], myout[62:52], myout[51:0]);
-                $display("Reference answer:");
-                $display("%b_%b_%b\n", ref[index][63], ref[index][62:52], ref[index][51:0]);
+                $display("Reference answer by C program:");
+                $display("%b_%b_%b", ref[index][63], ref[index][62:52], ref[index][51:0]);
+                $display("Verilog built-in answer:");
+                $display("%b_%b_%b\n", bulitin_ref[63], bulitin_ref[62:52], bulitin_ref[51:0]);
                 errcnt = errcnt + 1;
             end
         end
