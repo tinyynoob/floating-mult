@@ -1,7 +1,10 @@
-`timescale 10ns/100ps
+`timescale 1ns/10ps
 `include "fp_mult.v"
+// `include "../fp_mult.v"
+// `include "../Synthesis/fp_mult_syn.v"
 
 module TEST();
+    parameter HALF_CYCLE = 25;
     parameter CASENUM = 20000;
     reg [63:0] x [0:CASENUM - 1];
     reg [63:0] y [0:CASENUM - 1];
@@ -20,10 +23,14 @@ module TEST();
     
     always begin
         CLK = ~CLK;
-        #1;
+        #HALF_CYCLE;
     end
 
     initial begin
+        // $sdf_annotate("../Synthesis/fp_mult.sdf", TEST.m1); 
+        // $toggle_count("TEST.m1");
+        // $toggle_count_mode(1);
+
         $dumpfile("fp_mult.vcd");
         $dumpvars;
 
@@ -36,7 +43,7 @@ module TEST();
         ENABLE = 0;
         for (index = 0; index < CASENUM; index = index + 1) begin
             RESET = 1;
-            #2 RESET = 0;
+            #50 RESET = 0;
             ENABLE = 1;
             for (counter = 0; counter < 16; counter = counter + 1) begin
                 case (counter)
@@ -57,11 +64,11 @@ module TEST();
                     14: DATA_IN <= y[index][55:48];
                     15: DATA_IN <= y[index][63:56];
                 endcase
-                #2;
+                #(2 * HALF_CYCLE);
             end
             ENABLE = 0;
             while (!READY)
-                #2;
+                #(2 *  HALF_CYCLE);
             // assume the output contiguous
             for (counter = 0; counter < 8; counter = counter + 1) begin
                 case (counter)
@@ -74,7 +81,7 @@ module TEST();
                     6: myout[55:48] <= DATA_OUT;
                     7: myout[63:56] <= DATA_OUT;
                 endcase
-                #2;
+                #(2 * HALF_CYCLE);
             end
             bulitin_ref = $realtobits($bitstoreal(x[index]) * $bitstoreal(y[index]));
             // ignore 51th bit, which is the indicator of type of NaN
@@ -92,6 +99,7 @@ module TEST();
             end
         end
     $display("Total error: %d /%d", errcnt, CASENUM);
+    // $toggle_count_report_flat("fp_mult.tcf", "TEST.m1");
     $finish;
     end
 endmodule
