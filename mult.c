@@ -6,10 +6,13 @@
 DOUBLE mult(DOUBLE x, DOUBLE y)
 {
     /* if NaN involved */
-    if ((get_expn(y) == 0x7FFu && get_mtsa(y)))
+    if ((get_expn(y) == 0x7FFu && get_mtsa(y))) {
+        y.bits |= (uint64_t) 1 << 51;   // deliver quiet NaN
         return y;
-    else if ((get_expn(x) == 0x7FFu && get_mtsa(x)))
+    } else if ((get_expn(x) == 0x7FFu && get_mtsa(x))) {
+        x.bits |= (uint64_t) 1 << 51;   // deliver quiet NaN
         return x;
+    }
 
     uint64_t sign = get_sign(x) ^ get_sign(y);
     uint64_t expn = 0, mtsa = 0;

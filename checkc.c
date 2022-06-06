@@ -18,18 +18,15 @@ int main()
                             (uint64_t) rand() << 16 | (uint64_t) rand()};
         DOUBLE ref = (DOUBLE){.represent = x.represent * y.represent};
         DOUBLE my = mult(x, y);
-        if ((ref.bits | ((uint64_t) 1 << 51)) ==
-            (my.bits | ((uint64_t) 1 << 51))) {
-            // if (ref.bits == my.bits) {
-            // puts("passed");
+        if (my.bits == ref.bits) {
             pass++;
         } else {
             printf("x = %lf, y = %lf\n", x.represent, y.represent);
             show_bits(x);
             show_bits(y);
-            printf("%lf\n", ref.represent);
+            printf("ref: %lf\n", ref.represent);
             show_bits(ref);
-            printf("%lf\n", my.represent);
+            printf("my: %lf\n", my.represent);
             show_bits(my);
             putchar('\n');
             fail++;
