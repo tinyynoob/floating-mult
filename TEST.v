@@ -43,7 +43,7 @@ module TEST();
         ENABLE = 0;
         for (index = 0; index < CASENUM; index = index + 1) begin
             RESET = 1;
-            #50 RESET = 0;
+            #(2 * HALF_CYCLE) RESET = 0;
             ENABLE = 1;
             for (counter = 0; counter < 16; counter = counter + 1) begin
                 case (counter)
@@ -85,7 +85,7 @@ module TEST();
             end
             bulitin_ref = $realtobits($bitstoreal(x[index]) * $bitstoreal(y[index]));
             // ignore 51th bit, which is the indicator of type of NaN
-            if (myout != ref[index] || (myout[63:52] != bulitin_ref[63:52] || myout[50:0] != bulitin_ref[50:0])) begin
+            if (myout != ref[index] || myout != bulitin_ref) begin
                 $display("%t", $time);
                 $display("%b_%b_%b", x[index][63], x[index][62:52], x[index][51:0]);
                 $display("%b_%b_%b", y[index][63], y[index][62:52], y[index][51:0]);

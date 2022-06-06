@@ -177,10 +177,10 @@ module fp_mult(CLK, RESET, ENABLE, DATA_IN, DATA_OUT, READY);
         if (inend && calcount == 0) begin   // 0
             // A is NaN
             if (A[62:52] == {11{1'b1}} && A[51:0])
-                mprod[103:52] <= A[51:0];
+                mprod[103:52] <= {1'b1, A[50:0]};
             // B is NaN
             else if (B[62:52] == {11{1'b1}} && B[51:0])
-                mprod[103:52] <= B[51:0];
+                mprod[103:52] <= {1'b1, B[50:0]};
             // A is 0 and B is \infty
             else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0])
                 mprod[103:52] <= 1;
