@@ -1,0 +1,436 @@
+\documentclass{article}
+
+\usepackage{amsmath, amsfonts, graphicx}
+\usepackage{color, listings}
+\usepackage[utf8]{inputenc}
+\usepackage{CJKutf8}
+\usepackage{geometry}
+\geometry {
+    a4paper,
+    left = 3cm,
+    right = 3cm,
+    top = 4cm,
+    bottom = 4cm
+}
+
+\lstset {
+    backgroundcolor = \color{mygray},
+    basicstyle=\ttfamily,
+}
+
+\definecolor{mygray}{rgb}{0.92, 0.92, 0.92}
+\definecolor{vgreen}{RGB}{104,180,104}
+\definecolor{vblue}{RGB}{49,49,255}
+\definecolor{vorange}{RGB}{255,143,102}
+\lstdefinestyle{verilog-style}
+{
+    language=Verilog,
+    basicstyle=\small,
+    keywordstyle=\color{vblue},
+    identifierstyle=\color{black},
+    commentstyle=\color{vgreen},
+    tabsize=8
+}
+
+\title{DIC Final Project Report}
+\author{通訊四 407430013 林子翔}
+\date{\today}
+
+\usepackage{indentfirst}
+
+\begin{document}
+    \begin{titlepage}
+        \begin{CJK}{UTF8}{bsmi}
+        \maketitle
+        \end{CJK}
+        \thispagestyle{empty}
+    \end{titlepage}
+    
+    \section*{Intoduction}
+        In this project, we want to design an floating-point number multiplier chip, 
+        which complies with the IEEE-754 standard on 64-bit basic double format with "rounding to nearest" mode. 
+
+        At the first section, I will describe my design on the algorithm, 
+        and then I will explain the method to check my verilog program. 
+        At the third section, I will show the implementation result and the simulation statistics.
+
+
+    \section{Algorithm}
+        Our multiplier circuit can be simply divided into three stages:
+        \begin{enumerate}
+            \item Input stage
+            \item Calculation stage
+            \item Output stage
+        \end{enumerate}
+        Since the input stage and output stage just use a counter to move in or move out the data, we will mainly focus on how the calculation works.
+        \newline\newline
+        To describe my code, some used variables are listed here.
+        \begin{lstlisting}[style=verilog-style]
+    reg [63:0] A, B;    // input data
+    reg subnormal;      // subnormal number indicator
+    reg sign;
+    reg signed [12:0] expn;
+    reg [105:0] mprod;
+        \end{lstlisting}
+        At the end, \{{\tt sign, expn[10:0], mprod[103:52]}\} would be output.
+
+        \begin{itemize}
+            \item[$*$] RTL Code Location: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/fp_mult.v|
+        \end{itemize}
+
+        \subsection{Calculation}
+            To clearly state the progress of the algorithm, I am going to describe the calculation cycle-by-cycle.
+            \subsubsection*{Clock cycle 0}
+                At this time, the input data have located in {\tt A} and {\tt B}. \\
+                In the first cycle in calculation stage, we have to check whether {\tt A} or {\tt B} represents some special value, such as NaN and infinity. \\
+                If we are in one of the following conditions, raise the {\tt calend} flag and assign {\tt sign}, {\tt expn}, {\tt mprod} to corresponding value. As the flag raised, it would enter the output stage at next cycle, instead of going to the {\bf Clock cycle 1} we would mention later.
+                \begin{lstlisting}[style=verilog-style]
+    // A is NaN
+    if (A[62:52] == {11{1'b1}} && A[51:0])
+        calend <= 1;
+    // B is NaN
+    else if (B[62:52] == {11{1'b1}} && B[51:0])
+        calend <= 1;
+    // A is 0 and B is infty
+    else if (!A[62:0] && B[62:52] == {11{1'b1}} && !B[51:0])
+        calend <= 1;
+    // B is 0 and A is infty
+    else if (!B[62:0] && A[62:52] == {11{1'b1}} && !A[51:0])
+        calend <= 1;
+    // A or B is 0 and both not infty
+    else if (!A[62:0] || !B[62:0])
+        calend <= 1;
+    // A and B are both subnormal numbers
+    else if (!A[62:52] && A[51:0] && !B[62:52] && B[51:0])
+        calend <= 1;
+                \end{lstlisting}
+                
+                Simultaneously at cycle 0, if {\tt A} represents a subnormal number, {\tt A} and {\tt B} would be swapped. 
+                With this trick, the subnormal number would be always fixed at {\tt B}.
+                Afterwards, if we see {\tt subnormal} flag is raised, we would know that {\tt A} is a normal number and {\tt B} is a subnormal number, without checking again.
+
+            \subsubsection*{Clock cycle 1 - 4}
+                If we did not leave calculation stage at {\bf clock cycle 0}, there are two possibilities:
+                \begin{itemize}
+                    \item {\tt A} and {\tt B} are both normal numbers if ({\tt !subnormal}).
+                    \item {\tt A} is normal and {\tt B} is subnormal if ({\tt subnormal}).
+                \end{itemize}
+                When it comes to multiply two floating number, there are three basic operations we need to do:
+                \begin{itemize}
+                    \item xor their {\bf sign bit}
+                    \item add their {\bf exponential part}
+                    \item multiply their {\bf fractional part}
+                \end{itemize}
+
+                During the four cycles, we want to complete the multiplication part.
+                But since they have 52 or 52+1 bits (+1 for the implicit leading 1 of normal numbers),
+                it is a huge size for binary mutiplication.
+                To prevent overloading one single cycle, we divide this computation to four cycles, as follow:
+                \begin{lstlisting}[style = verilog-style]
+    else if (inend && !calend && counter == 4'b0001) begin  // 1
+        mprod <= {1'b1, A[51:0]} * B[13:0];
+    end
+    else if (inend && !calend && counter == 4'b0011) begin  // 2
+        mprod <= mprod + (({1'b1, A[51:0]} * B[26:14]) << 14);
+    end
+    else if (inend && !calend && counter == 4'b0010) begin  // 3
+        mprod <= mprod + (({1'b1, A[51:0]} * B[39:27]) << 27);
+    end
+    else if (inend && !calend && counter == 4'b0110) begin  // 4
+        mprod <= mprod + (({1'b1, A[51:0]} * 
+                                {~subnormal, B[51:40]}) << 40);
+    end
+                \end{lstlisting}
+                \noindent\rule{\textwidth}{0.1pt} \\
+
+                If ({\tt subnormal}), we need to do an additional thing during these four cycles. That is, indexing the highest {\tt 1} in the fractional part of {\tt B}.
+                We want a result like this:
+                \begin{lstlisting}
+    The position of highest 1 in B[51:0]:
+    ####################################################
+    |                                                  |
+    |                                                  |
+    1                    - result -                   52
+                \end{lstlisting}
+                The kind of indexing is a little bit compilicated in verilog HDL. 
+                To achieve this, I try to do binary search at first and then apply
+                bitwise searching.
+                At the beginning, we need to introduce some additional registers:
+                \begin{lstlisting}[style = verilog-style]
+    reg [5:0] idxMsb;
+    reg [2:0] msb_at_block;
+    reg [25:0] tmpbuf;  // temp buffer
+                \end{lstlisting}
+                For example, assume that we have such {\tt B[51:0]}:
+                \begin{lstlisting}
+    0000000001000_0000000000000_0000000000000_0000000000000
+             |
+             9
+                \end{lstlisting}
+                At cycle 1, {\tt B[51:0]} is compared with {(\tt 1 << 26)}, 
+                and {\tt msb\_at\_block[2]} is set since {\tt B[51:0] >= (1 << 26)}.
+                \begin{lstlisting}
+    msb_at_block:
+    1xx
+    tmpbuf:
+    0000000001000_0000000000000
+    [                         ] <- next range to compare
+                \end{lstlisting}
+                Because it is not easy to compare with non-specific part of a number,
+                we copy the higher part of the number to its lower part after each comparison, if needed.
+                Then we may always do the comparison on the lowest part of {\tt tmpbuf}. \\
+                After cycle 2, we do assignment {\tt tmpbuf[12:0] <= tmpbuf[25:13]} since {\tt (tmpbuf[25:0] >= (1 << 13))} and results in:
+                \begin{lstlisting}
+    msb_at_block:
+    11x
+    tmpbuf:
+    0000000001000_0000000001000
+                  [           ] <- next range to compare
+                \end{lstlisting}
+                At cycle 3, no copy operation involved since {\tt (tmpbuf[12:0] < (1 << 7))}
+                \begin{lstlisting}
+    msb_at_block:
+    110
+    tmpbuf:
+    0000000001000_0000000001000
+                        [     ] <- next range to compare
+                \end{lstlisting}
+                At cycle 4, we search the range bit-by bit to find the correct position of the highest {\tt 1} in the original {\tt B[51:0]} and store the result to {\tt idxMsb}.
+
+            \subsubsection*{Clock cycle 5}
+                Overhere, we have to explain why we computed {\tt idxMsb} at {\bf clock cycle 1-4}.
+                When we want to generate the output for our {\tt A}$\times${\tt B} product, 
+                we have to find the highest {\tt 1} in {\tt mprod} and hide it if the product is a normal number.
+                In the case that {\tt A} and {\tt B} are both normal number, it is very easy because
+                \[
+                    1.\underbrace{xx\dotsc xx}_{52} \quad\times\quad 1.\underbrace{xx\dotsc xx}_{52}
+                \]
+                always leads to one of the three:
+                \begin{align}
+                    01.\underbrace{xx\dotsc xx}_{104} \label{01}\\
+                    10.\underbrace{xx\dotsc xx}_{104} \label{10}\\
+                    11.\underbrace{xx\dotsc xx}_{104} \label{11}
+                \end{align}
+
+                However, on the other hand in the subnormal case, we also need to hide the highest {\tt 1} (if the product is normal) but we do not know where it is.
+                Thus we were finding the highest {\tt 1} in {\tt B[51:0]}, and this is nearly equivalent to search in {\tt mprod}, which was not available at that time.
+
+                In this cycle, we only do the alignment for subnormal case:
+                \begin{lstlisting}[style = verilog-style]
+    if (subnormal)
+        mprod <= mprod << idxMsb;
+                \end{lstlisting}
+
+                If {\tt (!subnormal)}, do nothing.
+                
+            \subsubsection*{Clock cycle 6}
+                After clock 5, no matter the input contained subnormal number or not. The {\tt mprod} is guaranteed to have the form in Equation \eqref{01}, \eqref{10}, or \eqref{11}. \\
+                Then we need to check {\tt mprod[105]}. If it is {\tt 1}, this means the multiplication produced a carry-out. 
+                We do 1-bit right-shift on {\tt mprod} to ensure {\tt (mprod[104] == 1)}. 
+
+                Another big thing for this cycle is the computation of {\tt expn}.
+                \begin{lstlisting}[style = verilog-style]
+    if (subnormal)
+        expn <= sign_Aexpn - 11'd1022 - sign_idxMsb + sign_carry;
+    else
+        expn <= sign_Aexpn + sign_Bexpn - 11'd1023 + sign_carry;
+                \end{lstlisting}
+                where the variables with "sign" prefix are just the variables with "signed" declaration to execute signed arithmetic operations.
+
+            \subsubsection*{Clock cycle 7}
+                According to the value of {\tt expn}, the output have four possibly formats:
+                \begin{itemize}
+                    \item {\tt expn} $\geq$ {\tt 11'b111\_1111\_1111} \\
+                    Since it exceeds the maximum range of valid {\tt expn}, it should be rouned to $\infty$ according to the standard.
+                    \item {\tt 11'b111\_1111\_1111} $>$ {\tt expn} $>$ 0 \\
+                    Result in a normal number.
+                    \item 0 $\geq$ {\tt expn} $\geq$ -52 \\
+                    Results in a subnormal number.
+                    \item {\tt -52} $>$ {\tt expn} \\
+                    Since the value is too tiny, it should be rounded to 0 according to the standard.
+                \end{itemize}
+
+                In this cycle, {\tt mprod} is right-shifted to prepare for the subnormal output.
+                \begin{lstlisting}[style = verilog-style]
+    if (sign_zero >= expn && expn >= -52)
+        mprod <= mprod >> (2 + ~expn);
+                \end{lstlisting}
+                where $(2 +\sim\mathrm{expn})$ is equivalent to $(1+|\mathrm{expn}|)$ in two's complement system. \\\\
+                This {\tt +1} is due to shift the implicit leading {\tt 1} at {\tt mprod[104]} to fractional part, since there is no the leading {\tt 1} in subnormal format.
+
+            \subsubsection*{Clock cycle 8}
+                This cycle is for rounding. Apply rounding to nearest according to the requirement.
+                \begin{lstlisting}[style = verilog-style]
+    {mprod[105], mprod[103:52]} <= mprod[103:52] + mprod[51];
+                \end{lstlisting}
+
+                The carry is put at {\tt mprod[105]} because we may avoid usage of a logic MUX for {\tt sign\_carry}, which is assigned by
+
+                \begin{lstlisting}[style = verilog-style]
+    wire signed [1:0] sign_carry = {1'b0, mprod[105]};
+                \end{lstlisting}
+
+            \subsubsection*{Clock cycle 9}
+                Cycle 9 is the last cycle in calculation stage.
+                We need to generate the result in a correct format.
+
+                \begin{lstlisting}[style = verilog-style]
+    if (expn >= sign_0x7FF)
+        mprod[103:52] <= 0;
+    else if (expn < -52)
+        mprod[103:52] <= 0;
+                \end{lstlisting}
+                \begin{lstlisting}[style = verilog-style]
+    if (expn >= sign_0x7FF)
+        expn[10:0] <= {11{1'b1}};
+    else if (expn > sign_zero)
+        expn[10:0] <= expn + sign_carry;
+    else if (expn >= -52)
+        expn[10:0] <= {{9{1'b0}}, sign_carry};
+    else
+        expn[10:0] <= 0;
+                \end{lstlisting}
+
+                Notice that after the rounding in cycle 8, the {\tt expn} may be added by {\tt 1}. A number in subnormal format may become a number in normal format. 
+                Nevertheless, we do not have to deal with it, because the {\tt 1} carried to {\tt mprod[104]} exactly becomes the implicit leading {\tt 1} in normal format.
+                
+    \section{Design Test}
+        In fact, before I started to write the verilog program, 
+        I wrote a C program to reach the desired multiplication.
+        This helps me to design the algorithm in a more abstract level, without considering some RTL detail.
+
+        With the C program, I can generate arbitrary number of test cases by the C function rand().
+        I generated 100000 random patterns to test my verilog implementation.
+        However, since the possibilities of appearance of subnormal numbers are too low,
+        I set the first 1000 pattern as subnormal numbers by clearing their exponential field to 0. 
+        In this way, the testbench can be made very simple. 
+        \begin{enumerate}
+            \item Generate many input {\tt A} and {\tt B} by C program.
+            \item Compute the product by the C program.
+            \item Compute the product by my verilog design.
+            \item Compare the two products above.
+        \end{enumerate}
+
+        In my testbench, the output of my verilog program are actually compared with both results from C and results from Verilog built-in floating multiplication. \\
+        The main drawback of my random-generated patterns is that the patterns are very often to become infinity since the exponential field of the input are arbitrary.
+
+        \begin{figure}[h]
+            \includegraphics[width=0.7\textwidth]{sim.png}
+        \end{figure}
+
+        \begin{itemize}
+            \item[$*$] Pattern Location: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/Pattern|
+            \item[$*$] Testbench Location: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/TEST.v|
+        \end{itemize}
+
+        \newpage
+
+    \section{Implementation Result}
+        
+        \subsection{Post-Synthesis Results}
+            \noindent pwd: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/Lowpower| \\
+            netlist: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/Lowpower/fp_mult_synLP.v|
+            
+            \begin{itemize}
+                \item Area
+                \begin{lstlisting}[backgroundcolor = \color{white},basicstyle=\small\sffamily]
+Instance Module  Cell Count  Cell Area  Net Area   Total Area 
+--------------------------------------------------------------
+fp_mult                4475 127530.850 68126.621   195657.471 
+                \end{lstlisting}
+                \item Power
+                \begin{itemize}
+                    \item Total: 0.63 (mW)
+                \end{itemize}
+                \begin{lstlisting}[backgroundcolor = \color{white},basicstyle=\small\sffamily]
+  -------------------------------------------------------------------------
+    Category         Leakage     Internal    Switching        Total    Row%
+  -------------------------------------------------------------------------
+      memory     0.00000e+00  0.00000e+00  0.00000e+00  0.00000e+00   0.00%
+    register     1.68908e-06  1.57490e-04  3.45403e-05  1.93720e-04  30.60%
+       latch     0.00000e+00  0.00000e+00  0.00000e+00  0.00000e+00   0.00%
+       logic     1.30044e-05  2.17370e-04  1.82472e-04  4.12846e-04  65.22%
+        bbox     0.00000e+00  0.00000e+00  0.00000e+00  0.00000e+00   0.00%
+       clock     7.05780e-08  1.40089e-05  1.23809e-05  2.64604e-05   4.18%
+         pad     0.00000e+00  0.00000e+00  0.00000e+00  0.00000e+00   0.00%
+          pm     0.00000e+00  0.00000e+00  0.00000e+00  0.00000e+00   0.00%
+  -------------------------------------------------------------------------
+    Subtotal     1.47641e-05  3.88869e-04  2.29393e-04  6.33026e-04 100.00%
+  Percentage           2.33%       61.43%       36.24%      100.00% 100.00%
+  -------------------------------------------------------------------------
+                \end{lstlisting}
+                \item Timing
+                \begin{lstlisting}[backgroundcolor = \color{white},basicstyle=\small\sffamily]
+Cost Group   : 'CLK' (path_group 'CLK')
+Timing slack :    1376ps 
+Start-point  : calcount_reg[3]/CK
+End-point    : mprod_reg[105]/SI
+                \end{lstlisting}
+            \end{itemize}
+
+        \subsection{Post-Layout Results}
+            \noindent pwd: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/APR| \\
+            pwd: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/DRCLVS| \\
+            CHIP.gds: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/APR/CHIP.gds| \\
+            CHIP.v: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/APR/CHIP_postLayout.v| \\
+            CHIP\_LVS.v: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/APR/CHIP_LVS.v| \\
+            CHIP.sdf: \verb|/misc/Si2_RAID-1/COURSE/dic/dic03/final_project/APR/CHIP.sdf|
+
+
+            \begin{itemize}
+                \item Area
+                    \begin{itemize}
+                        \item CHIP Width: 1130.32 ($\mu$m)
+                        \item CHIP Height: 1129.56 ($\mu$m)
+                    \end{itemize}
+                    \includegraphics[width=0.5\textwidth]{area.png}
+                \item Power
+                \begin{itemize}
+                    \item Total: 2.77 (mW)
+                \end{itemize}
+                \begin{lstlisting}[backgroundcolor = \color{white},basicstyle=\small\sffamily]
+---------------------------------------------------------------------------
+Cell                            Internal   Switching       Total     Leakage   Cell
+                                   Power       Power       Power       Power   Name
+---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+
+Total (   4489 of   4531  )        2.194      0.5584       2.77     0.01718
+                \end{lstlisting}
+                \item Timing
+                \begin{lstlisting}[backgroundcolor = \color{white},basicstyle=\small\sffamily]
+Analysis View: CHECK_SETUP_TIME
+Other End Arrival Time          1.481
+- Setup                         0.853
++ Phase Shift                  50.000
++ CPPR Adjustment               0.000
+= Required Time                50.628
+- Arrival Time                 48.681
+= Slack Time                    1.947
+                \end{lstlisting}
+                \begin{lstlisting}[backgroundcolor = \color{white},basicstyle=\small\sffamily]
+Analysis View: CHECK_HOLD_TIME
+Other End Arrival Time         25.506
++ Clock Gating Hold             0.000
++ Phase Shift                   0.000
+- CPPR Adjustment               0.639
+= Required Time                24.867
+  Arrival Time                 25.013
+  Slack Time                    0.146
+                \end{lstlisting}
+                \item Simulation Result
+                \begin{figure}[h]
+                    \includegraphics[width=0.7\textwidth]{postLayout_sim.png}
+                \end{figure}
+                \item LVS Result
+                \begin{figure}[h]
+                    \includegraphics[width=0.7\textwidth]{LVS.png}
+                \end{figure}
+                \item Layout
+                \begin{figure}[h]
+                    \includegraphics[width=0.8\textwidth]{layout_with_clocktree.png}
+                    \centering
+                \end{figure}
+            \end{itemize}
+
+\end{document}
